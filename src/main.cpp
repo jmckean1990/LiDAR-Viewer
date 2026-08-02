@@ -21,6 +21,15 @@ SDL_GLContext   gOpenGLContext = nullptr;
 glm::vec3 cameraPos {glm::vec3(0.0f, 0.0f, 3.0f)};
 glm::vec3 cameraFront {glm::vec3(0.0f, 0.0f, -1.0)};
 glm::vec3 cameraUp {glm::vec3(0.0f, 1.0f, 0.0f)};
+glm::vec3 cameraRight {glm::vec3(0.0f, 0.0f, 0.0f)};
+
+float lastX = gScreenWidth / 2.0f;
+float lastY = gScreenHeight / 2.0f;
+float xOffset = 0, yOffset = 0;
+const float cameraSensitivity = 0.1f;
+float yaw = -90.0f;
+float pitch = 0.0f;
+
 
 Uint64 ticks {0};
 float timeSeconds{0.0f};
@@ -147,6 +156,8 @@ void InitializeProgram() {
         exit(1);
     }
 
+    SDL_SetWindowRelativeMouseMode(gGraphicsApplicationWindow, true);
+
     gOpenGLContext = SDL_GL_CreateContext(gGraphicsApplicationWindow);
 
     if(gOpenGLContext == nullptr) {
@@ -166,24 +177,56 @@ void InitializeProgram() {
 void Input() {
     SDL_Event e;
     float cameraSpeed {0.0f};
+
     ticks = SDL_GetTicks();
     timeSeconds = ticks / 1000.0f;
     deltaTime = timeSeconds - lastFrame;
     lastFrame = timeSeconds;
-    cameraSpeed = 2.5f * deltaTime;
+    cameraSpeed = 1.0f * deltaTime;
+    
 
     while(SDL_PollEvent(&e) != 0) {
-        if(e.type == SDL_EVENT_QUIT) {
-            std::cout << "Goodbye!" << std::endl;
-            gQuit = true;
+        // if(e.type == SDL_EVENT_QUIT) {
+        //     std::cout << "Goodbye!" << std::endl;
+        //     gQuit = true;
+        // }
+
+        if(e.type == SDL_EVENT_MOUSE_MOTION) {
+            cameraRight = glm::normalize(glm::cross(cameraFront, cameraUp));
+            // cameraUp = glm::normalize(glm::cross(cameraRight, cameraUp));
+            xOffset = e.motion.xrel;
+            yOffset = -e.motion.yrel;
+            xOffset *= cameraSensitivity;
+            yOffset *= cameraSensitivity;
+
+            yaw += xOffset;
+            pitch += yOffset;
+
+            if(pitch > 89.0f) pitch = 89.0f;
+            if(pitch < -89.0f) pitch = -89.0f;
+
+            cameraFront.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+            cameraFront.y = sin(glm::radians(pitch));
+            cameraFront.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+            cameraFront = glm::normalize(cameraFront);
+            
+            // lastX = e.motion.x;
+            // lastY = e.motion.y;
+            // std::cout << "x: " << e.motion.x << ", y: " << e.motion.y << std::endl;
         }
     }
 
-        const bool* keyState = SDL_GetKeyboardState(NULL);
-        if(keyState[SDL_SCANCODE_W]) cameraPos += cameraSpeed * cameraFront;
-        if(keyState[SDL_SCANCODE_S]) cameraPos -= cameraSpeed * cameraFront;
-        if(keyState[SDL_SCANCODE_A]) cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-        if(keyState[SDL_SCANCODE_D]) cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    const bool* keyState = SDL_GetKeyboardState(NULL);
+    if(keyState[SDL_SCANCODE_ESCAPE]) {
+        std::cout << "Goodbye!" << std::endl;
+        gQuit = true;
+    }
+    
+    if(keyState[SDL_SCANCODE_W]) cameraPos += cameraSpeed * cameraFront;
+    if(keyState[SDL_SCANCODE_S]) cameraPos -= cameraSpeed * cameraFront;
+    if(keyState[SDL_SCANCODE_A]) cameraPos -= cameraRight * cameraSpeed;
+    if(keyState[SDL_SCANCODE_D]) cameraPos += cameraRight * cameraSpeed;
+
 
 }
 
@@ -218,7 +261,7 @@ std::vector<float> generateVertices(int numVertices) {
 
 std::vector<float> loadVerticesFromFile(std::string filename) {
     std::vector<float> vertices;
-    float x, y, z;
+    float x, y, z, confidence, intensity;
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> colorDist(0.0f, 1.0f);
@@ -236,8 +279,8 @@ std::vector<float> loadVerticesFromFile(std::string filename) {
         std::cout << line << std::endl;
     }
 
-    for(int i = 0; i < 30'000; ++i) {
-        bunnyFile >> x >> y >> z;
+    for(int i = 0; i < 35'947; ++i) {
+        bunnyFile >> x >> y >> z >> confidence >> intensity;
         vertices.push_back(x);
         vertices.push_back(y);
         vertices.push_back(z);
@@ -251,9 +294,9 @@ std::vector<float> loadVerticesFromFile(std::string filename) {
     return vertices;
 }
 
-int numVertices = 10'000;
+int numVertices = 35'947;
 // std::vector<float> vertices = generateVertices(numVertices);
-std::vector<float> vertices = loadVerticesFromFile("bun090.ply");
+std::vector<float> vertices = loadVerticesFromFile("bun_zipper.ply");
 
 void setupGraphics() {
     glPointSize(5.0f);
@@ -350,7 +393,7 @@ void Draw() {
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
     // glBindVertexArray(VAO);
-    glDrawArrays(GL_POINTS, 0, numVertices);
+    glDrawArrays(GL_POINTS, 0, vertices.size() / 6);
 }
 
 

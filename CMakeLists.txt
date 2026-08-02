@@ -67,11 +67,11 @@ if(WIN32)
     )
 endif()
 
-# Test data: Stanford Bunny range scans, downloaded on demand instead of
-# committed to the repo. https://graphics.stanford.edu/data/3Dscanrep/
+# Test data: Stanford Bunny range scans + reconstructed mesh, downloaded on
+# demand instead of committed to the repo. https://graphics.stanford.edu/data/3Dscanrep/
 set(BUNNY_DATA_DIR ${CMAKE_SOURCE_DIR}/TestData/StanfordBunnyData)
 
-if(NOT EXISTS ${BUNNY_DATA_DIR}/bun000.ply)
+if(NOT EXISTS ${BUNNY_DATA_DIR}/bun_zipper.ply)
     message(STATUS "Downloading Stanford Bunny test data...")
 
     set(BUNNY_ARCHIVE ${CMAKE_BINARY_DIR}/bunny.tar.gz)
@@ -90,13 +90,16 @@ if(NOT EXISTS ${BUNNY_DATA_DIR}/bun000.ply)
     file(MAKE_DIRECTORY ${BUNNY_DATA_DIR})
     file(GLOB BUNNY_FILES ${CMAKE_BINARY_DIR}/_bunny_extract/bunny/data/*)
     file(COPY ${BUNNY_FILES} DESTINATION ${BUNNY_DATA_DIR})
+
+    file(GLOB BUNNY_RECON_FILES ${CMAKE_BINARY_DIR}/_bunny_extract/bunny/reconstruction/*)
+    file(COPY ${BUNNY_RECON_FILES} DESTINATION ${BUNNY_DATA_DIR})
 endif()
 
 add_custom_command(
     TARGET lidar_viewer
     POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-        ${BUNNY_DATA_DIR}/bun090.ply
+        ${BUNNY_DATA_DIR}/bun_zipper.ply
         $<TARGET_FILE_DIR:lidar_viewer>
     VERBATIM
 )
