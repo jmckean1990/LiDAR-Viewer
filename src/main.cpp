@@ -10,8 +10,8 @@
 #include <string>
 
 
-int gScreenWidth = 680;
-int gScreenHeight = 480;
+int gScreenWidth = 1280;
+int gScreenHeight = 720;
 unsigned int VBO;
 unsigned int VAO;
 unsigned int shaderProgram;
@@ -23,8 +23,6 @@ glm::vec3 cameraFront {glm::vec3(0.0f, 0.0f, -1.0)};
 glm::vec3 cameraUp {glm::vec3(0.0f, 1.0f, 0.0f)};
 glm::vec3 cameraRight {glm::vec3(0.0f, 0.0f, 0.0f)};
 
-float lastX = gScreenWidth / 2.0f;
-float lastY = gScreenHeight / 2.0f;
 float xOffset = 0, yOffset = 0;
 const float cameraSensitivity = 0.1f;
 float yaw = -90.0f;
@@ -70,50 +68,33 @@ void GetOpenGLVersionInfo() {
 }
 
 unsigned int shaderSetupRun() {
-        // Virtex Shader
-    // create a shader object
-    unsigned int vertexShader;
-    vertexShader = glCreateShader(GL_VERTEX_SHADER);
-
-    // attach the shader source code to the shader object
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-
-    // compile the shader
-    glCompileShader(vertexShader);
-
-    // check if shader copilation was successful
+    unsigned int vertexShader, fragmentShader;
     int success;
     char infoLog[512];
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
 
+    vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
     if(!success) {
         glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
         std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
     }
 
-    // Fragment Shader
-    unsigned int fragmentShader;
     fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
     glCompileShader(fragmentShader);
 
-
     glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-
     if(!success) {
         glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
         std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED]N" << infoLog << std::endl;
     }
     
-    // link shader objects into a shader program
-    unsigned int shaderProgram;
     shaderProgram = glCreateProgram();
-
-    // attach shaders to the program
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
-    
-    // link
     glLinkProgram(shaderProgram);
 
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
@@ -121,7 +102,6 @@ unsigned int shaderSetupRun() {
         glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
     }
 
-    // delete shader objects after linking
     glDeleteShader(vertexShader);
     glDeleteShader(vertexShader);
 
@@ -131,6 +111,7 @@ unsigned int shaderSetupRun() {
 void InitializeProgram() {
     if(!SDL_Init(SDL_INIT_VIDEO)) {
         std::cout << "SDL3 Could not initialize video subsystem" << std::endl;
+        std::cout << SDL_GetError() << std::endl;
         exit(1);
     }
 
@@ -174,7 +155,7 @@ void InitializeProgram() {
     GetOpenGLVersionInfo();
 }
 
-void Input() {
+bool Input() {
     SDL_Event e;
     float cameraSpeed {0.0f};
 
@@ -185,12 +166,18 @@ void Input() {
     cameraSpeed = 1.0f * deltaTime;
     
 
-    while(SDL_PollEvent(&e) != 0) {
-        // if(e.type == SDL_EVENT_QUIT) {
-        //     std::cout << "Goodbye!" << std::endl;
-        //     gQuit = true;
-        // }
+    const bool* keyState = SDL_GetKeyboardState(NULL);
+    if(keyState[SDL_SCANCODE_ESCAPE]) {
+        std::cout << "Goodbye!" << std::endl;
+        return true;
+    }
+    
+    if(keyState[SDL_SCANCODE_W]) cameraPos += cameraSpeed * cameraFront;
+    if(keyState[SDL_SCANCODE_S]) cameraPos -= cameraSpeed * cameraFront;
+    if(keyState[SDL_SCANCODE_A]) cameraPos -= cameraRight * cameraSpeed;
+    if(keyState[SDL_SCANCODE_D]) cameraPos += cameraRight * cameraSpeed;
 
+    while(SDL_PollEvent(&e) != 0) {
         if(e.type == SDL_EVENT_MOUSE_MOTION) {
             cameraRight = glm::normalize(glm::cross(cameraFront, cameraUp));
             // cameraUp = glm::normalize(glm::cross(cameraRight, cameraUp));
@@ -209,30 +196,13 @@ void Input() {
             cameraFront.y = sin(glm::radians(pitch));
             cameraFront.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
             cameraFront = glm::normalize(cameraFront);
-            
-            // lastX = e.motion.x;
-            // lastY = e.motion.y;
-            // std::cout << "x: " << e.motion.x << ", y: " << e.motion.y << std::endl;
+
         }
     }
 
-    const bool* keyState = SDL_GetKeyboardState(NULL);
-    if(keyState[SDL_SCANCODE_ESCAPE]) {
-        std::cout << "Goodbye!" << std::endl;
-        gQuit = true;
-    }
-    
-    if(keyState[SDL_SCANCODE_W]) cameraPos += cameraSpeed * cameraFront;
-    if(keyState[SDL_SCANCODE_S]) cameraPos -= cameraSpeed * cameraFront;
-    if(keyState[SDL_SCANCODE_A]) cameraPos -= cameraRight * cameraSpeed;
-    if(keyState[SDL_SCANCODE_D]) cameraPos += cameraRight * cameraSpeed;
-
-
+    return false;
 }
 
-void PreDraw() {
-
-}
 
 std::vector<float> generateVertices(int numVertices) {
     std::vector<float> vertices;
@@ -290,7 +260,6 @@ std::vector<float> loadVerticesFromFile(std::string filename) {
         vertices.push_back(colorDist(gen));
     }
 
-
     return vertices;
 }
 
@@ -301,23 +270,15 @@ std::vector<float> vertices = loadVerticesFromFile("bun_zipper.ply");
 void setupGraphics() {
     glPointSize(5.0f);
     glEnable(GL_DEPTH_TEST);
-     // generates one or more buffer objects
-    // returns a object id
-    // params: number of buffers, address to store the ID
+
     glGenBuffers(1, &VBO);
     glGenVertexArrays(1, &VAO);
 
-    // bind the VAO
     glBindVertexArray(VAO);
-
-    // binds newly created buffer to the GL_ARRAY_BUFFER target
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
-    // allocates memory and stores data in the initialized memory of the bound buffer object
-    // glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
     
-    // Link Vertex Attributes
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
@@ -326,58 +287,21 @@ void setupGraphics() {
 
     shaderProgram = shaderSetupRun();
 
-    // activate the program
     glUseProgram(shaderProgram);
 }
 
 void Draw() {
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    // glm::mat4 tMat = glm::translate(glm::mat4(1.0f), glm::vec3(-0.5f, 0.5f, 0.5f));
-    // Uint64 ticks = SDL_GetTicks();
-    // float timeSeconds = ticks / 1000.0f;
-    // tMat = glm::rotate(tMat, timeSeconds, glm::vec3(0.0f, 0.0f, 1.0f));
 
     glm::mat4 model = glm::mat4(1.0f);
-    // model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    // model = glm::rotate(model, timeSeconds, glm::vec3(1.0f, 0.0f, 0.0f));
-    
+
     glm::mat4 view = glm::mat4(1.0f);
     view = glm::lookAt(
         cameraPos,
         cameraPos + cameraFront,
         cameraUp
     );
-
-    // view = glm::rotate(view, glm::radians(20.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    // view = glm::translate(view, glm::vec3(0.0f, -2.0f, -5.0f));
-
-    // glm::vec3 cameraPos {glm::vec3(0.0f, 0.0f, 3.0f)};    
-    // glm::vec3 cameraTarget {glm::vec3(0.0f, 0.0f, 0.0f)};
-    // glm::vec3 cameraDirection {glm::normalize(cameraPos - cameraTarget)};
-    // glm::vec3 up {glm::vec3(0.0f, 1.0f, 0.0f)};
-    // glm::vec3 cameraRight {glm::normalize(glm::cross(up, cameraDirection))};
-    // glm::vec3 cameraUp {glm::normalize(glm::cross(cameraDirection, cameraRight))};
-
-    // view = glm::lookAt(
-    //     cameraPos,
-    //     cameraTarget,
-    //     up
-    // );
-
-    // rotate around 0, 0, 0
-    // const float radius = 10.0f;
-    // float camX = sin(timeSeconds) * radius;
-    // float camZ = cos(timeSeconds) * radius;
-    // view = glm::lookAt(
-    //     glm::vec3(camX, 0.0f, camZ),
-    //     cameraTarget,
-    //     up
-    // );
-
-    
-
 
     glm::mat4 projection;
     projection = glm::perspective(glm::radians(45.0f), (float)gScreenWidth / gScreenHeight, 0.1f, 100.0f);
@@ -397,21 +321,6 @@ void Draw() {
 }
 
 
-void MainLoop() {
-    setupGraphics();
-
-    while(!gQuit) {
-        Input();
-
-        PreDraw();
-
-        Draw();
-
-        // Update the screen
-        SDL_GL_SwapWindow(gGraphicsApplicationWindow);
-    }
-}
-
 void CleanUp() {
     SDL_GL_DestroyContext(gOpenGLContext);
     SDL_DestroyWindow(gGraphicsApplicationWindow);
@@ -419,61 +328,20 @@ void CleanUp() {
 }
 
 int main() {
+    bool quit = false;
+    
     InitializeProgram();
+    setupGraphics();
 
-    MainLoop();
+    while(!quit) {
+        quit = Input();
+
+        Draw();
+
+        // Update the screen
+        SDL_GL_SwapWindow(gGraphicsApplicationWindow);
+    }
 
     CleanUp();
-
     return 0;
 }
-
-
-
-
-
-
-// int main()
-// {
-//     if (!SDL_Init(SDL_INIT_VIDEO)) {
-//         std::cerr << "SDL_Init failed: "
-//                   << SDL_GetError()
-//                   << '\n';
-//         return 1;
-//     }
-
-//     SDL_Window* window = SDL_CreateWindow(
-//         "SDL3 Test",
-//         1280,
-//         720,
-//         SDL_WINDOW_RESIZABLE
-//     );
-
-//     if (window == nullptr) {
-//         std::cerr << "SDL_CreateWindow failed: "
-//                   << SDL_GetError()
-//                   << '\n';
-
-//         SDL_Quit();
-//         return 1;
-//     }
-
-//     bool running = true;
-
-//     while (running) {
-//         SDL_Event event{};
-
-//         while (SDL_PollEvent(&event)) {
-//             if (event.type == SDL_EVENT_QUIT) {
-//                 running = false;
-//             }
-//         }
-
-//         SDL_Delay(1);
-//     }
-
-//     SDL_DestroyWindow(window);
-//     SDL_Quit();
-
-//     return 0;
-// }
