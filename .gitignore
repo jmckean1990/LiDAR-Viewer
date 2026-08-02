@@ -67,3 +67,6 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Test data (fetched by CMake, see TestData target in CMakeLists.txt)
+TestData/
