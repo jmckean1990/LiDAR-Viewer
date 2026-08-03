@@ -93,6 +93,12 @@ target_link_libraries(
         imgui
 )
 
+# Bake the MinGW runtime into the exe so it runs on machines without MSYS2
+# installed, instead of depending on libgcc/libstdc++/libwinpthread DLLs.
+if(MINGW)
+    target_link_options(lidar_viewer PRIVATE -static-libgcc -static-libstdc++ -static)
+endif()
+
 
 if(WIN32)
     add_custom_command(

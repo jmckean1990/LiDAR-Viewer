@@ -4,6 +4,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_opengl3.h"
+
 #include <iostream>
 #include <random>
 #include <fstream>
@@ -43,6 +47,8 @@ const float cameraSensitivity = 0.1f;
 float yaw = -90.0f;
 float pitch = 0.0f;
 
+bool uiMode = false;  // Tab toggles: false = fly camera captures mouse, true = cursor free for ImGui
+
 
 Uint64 ticks {0};
 float timeSeconds{0.0f};
@@ -51,6 +57,7 @@ float lastFrame {0.0f};
 
 std::vector<float> vertices;
 std::string frameFile = "000000000";
+std::string datasetFolder {"datasets/KITTI"};
     
 
 const char* vertexShaderSource = "#version 410 core\n"
@@ -171,6 +178,13 @@ void InitializeProgram() {
     }
 
     GetOpenGLVersionInfo();
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplSDL3_InitForOpenGL(gGraphicsApplicationWindow, gOpenGLContext);
+    ImGui_ImplOpenGL3_Init("#version 410");
 }
 
 bool Input() {
@@ -190,19 +204,29 @@ bool Input() {
         return true;
     }
 
-    
-    if(keyState[SDL_SCANCODE_W]) cameraPos += cameraSpeed * cameraFront;
-    if(keyState[SDL_SCANCODE_S]) cameraPos -= cameraSpeed * cameraFront;
-    if(keyState[SDL_SCANCODE_A]) cameraPos -= cameraRight * cameraSpeed;
-    if(keyState[SDL_SCANCODE_D]) cameraPos += cameraRight * cameraSpeed;
+    if(!uiMode) {
+        if(keyState[SDL_SCANCODE_W]) cameraPos += cameraSpeed * cameraFront;
+        if(keyState[SDL_SCANCODE_S]) cameraPos -= cameraSpeed * cameraFront;
+        if(keyState[SDL_SCANCODE_A]) cameraPos -= cameraRight * cameraSpeed;
+        if(keyState[SDL_SCANCODE_D]) cameraPos += cameraRight * cameraSpeed;
+    }
 
     while(SDL_PollEvent(&e) != 0) {
+        ImGui_ImplSDL3_ProcessEvent(&e);
+
+        if(e.type == SDL_EVENT_QUIT) return true;
+
         if(e.type == SDL_EVENT_KEY_UP) {
+            if(e.key.key == SDLK_TAB) {
+                uiMode = !uiMode;
+                SDL_SetWindowRelativeMouseMode(gGraphicsApplicationWindow, !uiMode);
+            }
+
             if(e.key.key == SDLK_SPACE) {
                 std::string frameStr = std::to_string(frame);
                 std::string fileStr = frameStr.insert(0, 10 - frameStr.size(), '0') + ".bin";
                 std::cout << fileStr << std::endl;
-                vertices = loadVerticesFromBin(fileStr);
+                vertices = loadVerticesFromBin(datasetFolder + "/" + fileStr);
                 frame++;
 
                 if(frame > frameMax) frame = 0;
@@ -212,7 +236,7 @@ bool Input() {
             }
         }
 
-        if(e.type == SDL_EVENT_MOUSE_MOTION) {
+        if(e.type == SDL_EVENT_MOUSE_MOTION && !uiMode) {
             cameraRight = glm::normalize(glm::cross(cameraFront, cameraUp));
             // cameraUp = glm::normalize(glm::cross(cameraRight, cameraUp));
             xOffset = e.motion.xrel;
@@ -408,6 +432,26 @@ void setupGraphics() {
 }
 
 void Draw() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    if(uiMode) {
+        // ImGui::ShowDemoWindow();
+        ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Text("Frame: %d / %d", frame, frameMax);
+        ImGui::Text("Points: %zu", vertices.size() / 6);
+        ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
+        ImGui::Text("Camera Position: %.2f, %.2f, %.2f", cameraPos.x, cameraPos.y, cameraPos.z);
+        ImGui::Text("Mode: %s", uiMode ? "UI Mode (Tab to Camera Mode)" : "Camera Mode: (Tab to UI Mode)");
+
+        ImGui::End();
+    } else {
+        ImGui::Begin("Info");
+        ImGui::Text("Mode: %s", uiMode ? "UI Mode (Tab to Camera Mode)" : "Camera Mode: (Tab to UI Mode)");
+        ImGui::End();
+    }
+
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -435,10 +479,17 @@ void Draw() {
 
     // glBindVertexArray(VAO);
     glDrawArrays(GL_POINTS, 0, vertices.size() / 6);
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 
 void CleanUp() {
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+
     SDL_GL_DestroyContext(gOpenGLContext);
     SDL_DestroyWindow(gGraphicsApplicationWindow);
     SDL_Quit();
@@ -448,7 +499,7 @@ int main() {
     bool quit = false;
     InitializeProgram();
 
-    vertices = loadVerticesFromBin("0000000000.bin");
+    vertices = loadVerticesFromBin(datasetFolder + "/" + "0000000000.bin");
 
     setupGraphics();
 
