@@ -8,17 +8,32 @@
 #include <random>
 #include <fstream>
 #include <string>
+#include <algorithm>
+
+
+void GetOpenGLVersionInfo();
+unsigned int shaderSetupRun();
+void InitializeProgram();
+bool Input();
+std::vector<float> generateVertices(int numVertices);
+glm::vec3 colormap(float t);
+std::vector<float> loadVerticesFromBin(std::string filename);
+std::vector<float> loadVerticesFromFile(std::string filename);
+void setupGraphics();
+void Draw();
+void CleanUp();
 
 
 int gScreenWidth = 1280;
 int gScreenHeight = 720;
+int frame = 0, frameMax = 153; 
 unsigned int VBO;
 unsigned int VAO;
 unsigned int shaderProgram;
 SDL_Window*     gGraphicsApplicationWindow = nullptr;
 SDL_GLContext   gOpenGLContext = nullptr;
 
-glm::vec3 cameraPos {glm::vec3(0.0f, 0.0f, 3.0f)};
+glm::vec3 cameraPos {glm::vec3(0.0f, 0.0f, 10.0f)};
 glm::vec3 cameraFront {glm::vec3(0.0f, 0.0f, -1.0)};
 glm::vec3 cameraUp {glm::vec3(0.0f, 1.0f, 0.0f)};
 glm::vec3 cameraRight {glm::vec3(0.0f, 0.0f, 0.0f)};
@@ -33,6 +48,9 @@ Uint64 ticks {0};
 float timeSeconds{0.0f};
 float deltaTime {0.0f};
 float lastFrame {0.0f};
+
+std::vector<float> vertices;
+std::string frameFile = "000000000";
     
 
 const char* vertexShaderSource = "#version 410 core\n"
@@ -103,7 +121,7 @@ unsigned int shaderSetupRun() {
     }
 
     glDeleteShader(vertexShader);
-    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
 
     return shaderProgram;
 }
@@ -131,7 +149,7 @@ void InitializeProgram() {
     gGraphicsApplicationWindow = SDL_CreateWindow(
                                 "OpenGL Window", 
                                 gScreenWidth, gScreenHeight,
-                                SDL_WINDOW_OPENGL);
+                                SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     if(gGraphicsApplicationWindow == nullptr) {
         std::cout << "SDL Window could not be created." << std::endl;
         exit(1);
@@ -163,7 +181,7 @@ bool Input() {
     timeSeconds = ticks / 1000.0f;
     deltaTime = timeSeconds - lastFrame;
     lastFrame = timeSeconds;
-    cameraSpeed = 1.0f * deltaTime;
+    cameraSpeed = 10.0f * deltaTime;
     
 
     const bool* keyState = SDL_GetKeyboardState(NULL);
@@ -171,6 +189,7 @@ bool Input() {
         std::cout << "Goodbye!" << std::endl;
         return true;
     }
+
     
     if(keyState[SDL_SCANCODE_W]) cameraPos += cameraSpeed * cameraFront;
     if(keyState[SDL_SCANCODE_S]) cameraPos -= cameraSpeed * cameraFront;
@@ -178,6 +197,21 @@ bool Input() {
     if(keyState[SDL_SCANCODE_D]) cameraPos += cameraRight * cameraSpeed;
 
     while(SDL_PollEvent(&e) != 0) {
+        if(e.type == SDL_EVENT_KEY_UP) {
+            if(e.key.key == SDLK_SPACE) {
+                std::string frameStr = std::to_string(frame);
+                std::string fileStr = frameStr.insert(0, 10 - frameStr.size(), '0') + ".bin";
+                std::cout << fileStr << std::endl;
+                vertices = loadVerticesFromBin(fileStr);
+                frame++;
+
+                if(frame > frameMax) frame = 0;
+
+                glBindBuffer(GL_ARRAY_BUFFER, VBO);
+                glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
+            }
+        }
+
         if(e.type == SDL_EVENT_MOUSE_MOTION) {
             cameraRight = glm::normalize(glm::cross(cameraFront, cameraUp));
             // cameraUp = glm::normalize(glm::cross(cameraRight, cameraUp));
@@ -197,6 +231,12 @@ bool Input() {
             cameraFront.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
             cameraFront = glm::normalize(cameraFront);
 
+        }
+
+        if(e.type == SDL_EVENT_WINDOW_RESIZED) {
+            gScreenWidth = e.window.data1;
+            gScreenHeight = e.window.data2;
+            glViewport(0, 0, gScreenWidth, gScreenHeight);
         }
     }
 
@@ -229,6 +269,87 @@ std::vector<float> generateVertices(int numVertices) {
     return vertices;
 }
 
+glm::vec3 colormap(float t) {
+    static const glm::vec3 stops[] = {
+        {0.0f, 0.0f, 0.5f},  // dark blue
+        {0.0f, 1.0f, 1.0f},  // cyan
+        {0.0f, 1.0f, 0.0f},  // green
+        {1.0f, 1.0f, 0.0f},  // yellow
+        {1.0f, 0.0f, 0.0f},  // red
+    };
+    constexpr int numStops = sizeof(stops) / sizeof(stops[0]);
+
+    float scaled = t * (numStops - 1);
+    int idx = static_cast<int>(scaled);
+    if (idx >= numStops - 1) return stops[numStops - 1];
+
+    float frac = scaled - idx;
+    return glm::mix(stops[idx], stops[idx + 1], frac);
+}
+
+std::vector<float> loadVerticesFromBin(std::string filename) {
+    std::vector<float> vertices;
+    std::vector<float> intensities;
+    float x, y, z, intensity;
+    size_t numFloats {0};
+    std::streamsize fileSize {0};
+    std::ifstream binFile(filename, std::ios::binary);
+
+    if(!binFile.is_open()) {
+        std::cout << "Error opening file." << std::endl;
+        return vertices;
+    }
+
+    binFile.seekg(0, std::ios::end);
+    fileSize = binFile.tellg();
+    binFile.seekg(0, std::ios::beg);
+
+    numFloats = fileSize / sizeof(float);
+
+    std::vector<float> rawData(numFloats);
+    binFile.read(reinterpret_cast<char*>(rawData.data()), fileSize);
+
+    for(int i = 3; i < numFloats; i+= 4) {
+        intensities.push_back(rawData[i]);
+    }
+
+    size_t numIntensities {intensities.size()};
+    size_t lowIdx = static_cast<size_t>(0.01 * (numIntensities - 1));
+    size_t highIdx = static_cast<size_t>(0.99 * (numIntensities - 1));
+
+    std::nth_element(intensities.begin(), intensities.begin() + lowIdx, intensities.end());
+    float p1 = intensities[lowIdx];
+
+    std::nth_element(intensities.begin(), intensities.begin() + highIdx, intensities.end());
+    float p99 = intensities[highIdx];
+    
+    for(int i = 0; i + 3 < numFloats; i += 4) {
+        x = rawData[i];
+        y = rawData[i + 1];
+        z = rawData[i + 2];
+        intensity = rawData[i + 3];
+
+        float t = std::clamp((intensity - p1) / (p99 - p1), 0.0f, 1.0f);
+        glm::vec3 color = colormap(t);
+
+        // vertices.push_back(x);
+        // vertices.push_back(y);
+        // vertices.push_back(z);
+
+        // adjusting coordinates to account for the data coordinate system
+        vertices.push_back(-y);     // x value
+        vertices.push_back(z);      // y value
+        vertices.push_back(-x);     // z value
+
+        // greyscale initially for the color
+        vertices.push_back(color.r);
+        vertices.push_back(color.g);
+        vertices.push_back(color.b);
+    }
+
+    return vertices;
+}
+
 std::vector<float> loadVerticesFromFile(std::string filename) {
     std::vector<float> vertices;
     float x, y, z, confidence, intensity;
@@ -246,7 +367,7 @@ std::vector<float> loadVerticesFromFile(std::string filename) {
     // ignore header
     while(line != "end_header") {
         std::getline(bunnyFile, line);
-        std::cout << line << std::endl;
+        // std::cout << line << std::endl;
     }
 
     for(int i = 0; i < 35'947; ++i) {
@@ -262,10 +383,6 @@ std::vector<float> loadVerticesFromFile(std::string filename) {
 
     return vertices;
 }
-
-int numVertices = 35'947;
-// std::vector<float> vertices = generateVertices(numVertices);
-std::vector<float> vertices = loadVerticesFromFile("bun_zipper.ply");
 
 void setupGraphics() {
     glPointSize(5.0f);
@@ -304,7 +421,7 @@ void Draw() {
     );
 
     glm::mat4 projection;
-    projection = glm::perspective(glm::radians(45.0f), (float)gScreenWidth / gScreenHeight, 0.1f, 100.0f);
+    projection = glm::perspective(glm::radians(45.0f), (float)gScreenWidth / gScreenHeight, 0.1f, 200.0f);
 
 
     GLint modelLoc = glGetUniformLocation(shaderProgram, "model");
@@ -329,8 +446,10 @@ void CleanUp() {
 
 int main() {
     bool quit = false;
-    
     InitializeProgram();
+
+    vertices = loadVerticesFromBin("0000000000.bin");
+
     setupGraphics();
 
     while(!quit) {
