@@ -1,4 +1,4 @@
-#include <glad/glad.h>
+﻿#include <glad/glad.h>
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -13,6 +13,8 @@
 #include <fstream>
 #include <string>
 #include <algorithm>
+
+#include "FlyCamera.hpp"
 
 
 void GetOpenGLVersionInfo();
@@ -37,15 +39,6 @@ unsigned int shaderProgram;
 SDL_Window*     gGraphicsApplicationWindow = nullptr;
 SDL_GLContext   gOpenGLContext = nullptr;
 
-glm::vec3 cameraPos {glm::vec3(0.0f, 0.0f, 10.0f)};
-glm::vec3 cameraFront {glm::vec3(0.0f, 0.0f, -1.0)};
-glm::vec3 cameraUp {glm::vec3(0.0f, 1.0f, 0.0f)};
-glm::vec3 cameraRight {glm::vec3(0.0f, 0.0f, 0.0f)};
-
-float xOffset = 0, yOffset = 0;
-const float cameraSensitivity = 0.1f;
-float yaw = -90.0f;
-float pitch = 0.0f;
 
 bool uiMode = false;  // Tab toggles: false = fly camera captures mouse, true = cursor free for ImGui
 
@@ -58,6 +51,8 @@ float lastFrame {0.0f};
 std::vector<float> vertices;
 std::string frameFile = "000000000";
 std::string datasetFolder {"datasets/KITTI"};
+
+FlyCamera camera;
     
 
 const char* vertexShaderSource = "#version 410 core\n"
@@ -189,13 +184,11 @@ void InitializeProgram() {
 
 bool Input() {
     SDL_Event e;
-    float cameraSpeed {0.0f};
 
     ticks = SDL_GetTicks();
     timeSeconds = ticks / 1000.0f;
     deltaTime = timeSeconds - lastFrame;
     lastFrame = timeSeconds;
-    cameraSpeed = 10.0f * deltaTime;
     
 
     const bool* keyState = SDL_GetKeyboardState(NULL);
@@ -205,10 +198,11 @@ bool Input() {
     }
 
     if(!uiMode) {
-        if(keyState[SDL_SCANCODE_W]) cameraPos += cameraSpeed * cameraFront;
-        if(keyState[SDL_SCANCODE_S]) cameraPos -= cameraSpeed * cameraFront;
-        if(keyState[SDL_SCANCODE_A]) cameraPos -= cameraRight * cameraSpeed;
-        if(keyState[SDL_SCANCODE_D]) cameraPos += cameraRight * cameraSpeed;
+            // camera update
+        if(keyState[SDL_SCANCODE_W]) camera.updatePosition(Direction::FORWARD, deltaTime);
+        if(keyState[SDL_SCANCODE_S]) camera.updatePosition(Direction::BACKWARD, deltaTime);
+        if(keyState[SDL_SCANCODE_A]) camera.updatePosition(Direction::LEFT, deltaTime);
+        if(keyState[SDL_SCANCODE_D]) camera.updatePosition(Direction::RIGHT, deltaTime);
     }
 
     while(SDL_PollEvent(&e) != 0) {
@@ -237,24 +231,7 @@ bool Input() {
         }
 
         if(e.type == SDL_EVENT_MOUSE_MOTION && !uiMode) {
-            cameraRight = glm::normalize(glm::cross(cameraFront, cameraUp));
-            // cameraUp = glm::normalize(glm::cross(cameraRight, cameraUp));
-            xOffset = e.motion.xrel;
-            yOffset = -e.motion.yrel;
-            xOffset *= cameraSensitivity;
-            yOffset *= cameraSensitivity;
-
-            yaw += xOffset;
-            pitch += yOffset;
-
-            if(pitch > 89.0f) pitch = 89.0f;
-            if(pitch < -89.0f) pitch = -89.0f;
-
-            cameraFront.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-            cameraFront.y = sin(glm::radians(pitch));
-            cameraFront.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-            cameraFront = glm::normalize(cameraFront);
-
+            camera.updateFront(e.motion.xrel, -e.motion.yrel);
         }
 
         if(e.type == SDL_EVENT_WINDOW_RESIZED) {
@@ -437,6 +414,7 @@ void Draw() {
     ImGui::NewFrame();
 
     if(uiMode) {
+        glm::vec3 cameraPos = camera.getCameraPosition();
         // ImGui::ShowDemoWindow();
         ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Text("Frame: %d / %d", frame, frameMax);
@@ -456,16 +434,11 @@ void Draw() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glm::mat4 model = glm::mat4(1.0f);
-
-    glm::mat4 view = glm::mat4(1.0f);
-    view = glm::lookAt(
-        cameraPos,
-        cameraPos + cameraFront,
-        cameraUp
-    );
-
+    glm::mat4 view;
     glm::mat4 projection;
-    projection = glm::perspective(glm::radians(45.0f), (float)gScreenWidth / gScreenHeight, 0.1f, 200.0f);
+    
+    view = camera.getViewMatrix();
+    projection = camera.getProjectionMatrix((float)gScreenWidth / gScreenHeight);
 
 
     GLint modelLoc = glGetUniformLocation(shaderProgram, "model");
