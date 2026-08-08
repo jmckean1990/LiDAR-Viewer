@@ -40,7 +40,10 @@ FetchContent_MakeAvailable(SDL3 glm imgui)
 
 add_executable(lidar_viewer
     src/main.cpp
+    src/Application.cpp
     src/FlyCamera.cpp
+    src/Shader.cpp
+    src/Renderer.cpp
 )
 
 add_library (

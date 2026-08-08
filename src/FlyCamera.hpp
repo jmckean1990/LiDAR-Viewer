@@ -13,6 +13,15 @@ enum class Direction {
 
 
 class FlyCamera {
+public:
+    FlyCamera() {}
+
+    void updatePosition(Direction dir, float deltaTime);
+    void updateFront(float xOffset, float yOffset);
+    glm::mat4 getViewMatrix() const;
+    glm::mat4 getProjectionMatrix(float aspectRation) const;
+    glm::vec3 getCameraPosition() const {return cameraPos;};
+
 private:
 
     const float cameraSensitivity = 0.1f;
@@ -27,15 +36,6 @@ private:
     glm::vec3 cameraRight {glm::vec3(0.0f, 0.0f, 0.0f)};
     glm::vec3 worldUp {glm::vec3(0.0f, 1.0f, 0.0f)};
     glm::mat4 view = glm::mat4(1.0f);
-
-public:
-    FlyCamera() {}
-
-    void updatePosition(Direction dir, float deltaTime);
-    void updateFront(float xOffset, float yOffset);
-    glm::mat4 getViewMatrix() const;
-    glm::mat4 getProjectionMatrix(float aspectRation) const;
-    glm::vec3 getCameraPosition() const {return cameraPos;};
 
 };
 
