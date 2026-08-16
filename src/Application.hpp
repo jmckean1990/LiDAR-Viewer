@@ -8,6 +8,14 @@
 #include <optional>
 #include <filesystem>
 
+enum class DatasetFormat {KITTI, NUSCENES};
+
+struct FormatInfo {
+    int stride;
+    float groundOffset;
+    float frameInterval;
+};
+
 class Application {
 public:
     std::vector<float> vertices;  
@@ -35,12 +43,16 @@ private:
     FlyCamera camera;
     std::optional <Renderer> renderer;
 
+    DatasetFormat currentFormat = DatasetFormat::KITTI;
+
     bool init();
     bool input(float deltaTime);
     void shutdown();
+    void loadFrame(int frame);
     glm::vec3 colormap(float t);
-    std::vector<float> loadVerticesFromBin(std::string filename);
+    std::vector<float> loadVerticesFromBin(std::string filename, int stride, float groundOffset);
     static void SDLCALL openFolderCallback(void* userData, const char * const *fileList, int filter);
     static void SDLCALL openFileCallback(void* userData, const char * const *fileList, int filter);
+    FormatInfo formatInfo(DatasetFormat fmt) const;
 };
 

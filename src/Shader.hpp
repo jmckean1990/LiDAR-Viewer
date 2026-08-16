@@ -30,6 +30,7 @@ public:
     bool isValid() const { return id != 0; }
     void use() const;
     void setMat4Uniform(const std::string& name, const glm::mat4& data) const;
+    void setBoolUniform(const std::string& name, bool isPoint) const;
     
 
 private:

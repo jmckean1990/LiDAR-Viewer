@@ -115,3 +115,8 @@ void Shader::setMat4Uniform(const std::string& name, const glm::mat4& data) cons
     GLint modelLoc = glGetUniformLocation(id, name.c_str());
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(data));
 }
+
+void Shader::setBoolUniform(const std::string& name, bool isPoint) const {
+    GLint modelLoc = glGetUniformLocation(id, name.c_str());
+    glUniform1i(modelLoc, isPoint);
+}
