@@ -7,12 +7,15 @@
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
+#include "IconsFontAwesome6.h"
 
 #include <iostream>
 #include <random>
 #include <fstream>
 #include <algorithm>
 #include <vector>
+#include <filesystem>
+
 
 
 Application::Application() {
@@ -48,7 +51,7 @@ bool Application::init() {
         return false;
     }
 
-    SDL_SetWindowRelativeMouseMode(graphicsApplicationWindow, true);
+    SDL_SetWindowRelativeMouseMode(graphicsApplicationWindow, false);
 
     openGLContext = SDL_GL_CreateContext(graphicsApplicationWindow);
 
@@ -73,25 +76,81 @@ bool Application::init() {
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
 
+    ImGuiIO& io = ImGui::GetIO();
+    ImFontConfig baseConfig;
+    baseConfig.SizePixels = 16.0f;
+    io.Fonts->AddFontDefault(&baseConfig);
+    
+    // io.Fonts->AddFontDefault();
+    static const ImWchar iconRanges[] = {ICON_MIN_FA, ICON_MAX_16_FA, 0};
+    ImFontConfig iconConfig;
+    iconConfig.MergeMode = true;
+    iconConfig.PixelSnapH = true;
+    iconConfig.GlyphMinAdvanceX = 16.0f;
+    io.Fonts->AddFontFromFileTTF("fa-solid-900.ttf", 16.0f, &iconConfig, iconRanges);
+
+    // TODO: NEED A FIX FOR THIS
+    // io.IniFilename = nullptr;       // temporarily disable permenant setup docking chagnes for dev
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
     ImGui_ImplSDL3_InitForOpenGL(graphicsApplicationWindow, openGLContext);
     ImGui_ImplOpenGL3_Init("#version 410");
 
     return true;
 }
 
-void Application::run() {
-
-    vertices = loadVerticesFromBin(datasetFolder + "/" + "0000000000.bin");
-    renderer->setVertices(vertices);
+void Application::run() {    
+    float lastFrame {0.0f};
+    ImVec2 iconSize(24, 24);
+    float frameChangeInterval = 1.0f / 10.0f;   // KITTI frames taken at 10Hz
 
     while(!running) {
-        running = input();
+        Uint64 ticks {SDL_GetTicks()};
+        float timeSeconds {ticks / 1000.0f};
+        float deltaTime = {timeSeconds - lastFrame};
+
+        lastFrame = timeSeconds;
+
+        running = input(deltaTime);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
-        if(uiMode) {
+        ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+
+        ImGui::BeginMainMenuBar();
+        if(ImGui::Button(ICON_FA_FILE " Open File", iconSize)) {
+            std::cout << "Open file pressed" << "\n";
+            SDL_ShowOpenFileDialog(openFileCallback, this, graphicsApplicationWindow, NULL, 0, NULL, false);
+        }
+        if(ImGui::Button(ICON_FA_FOLDER_OPEN " Open Folder", iconSize)) {
+            isPlaying = false;
+            SDL_ShowOpenFolderDialog(openFolderCallback, this, graphicsApplicationWindow, NULL, false);
+        }
+
+        if(!framePaths.empty() && framePaths.size() > 1){
+            if(ImGui::Button(ICON_FA_BACKWARD_FAST, iconSize)) {
+                frame = 0;
+                renderer->setVertices(loadVerticesFromBin(framePaths[frame].generic_string()));
+            }
+            if(ImGui::Button(ICON_FA_BACKWARD_STEP, iconSize)) {
+                frame = std::max(0, frame - 1);
+                renderer->setVertices(loadVerticesFromBin(framePaths[frame].generic_string()));
+            }
+            if(ImGui::Button(isPlaying ? ICON_FA_PAUSE : ICON_FA_PLAY, iconSize)) {isPlaying = !isPlaying;}
+            if(ImGui::Button(ICON_FA_FORWARD_STEP, iconSize)) {
+                frame = std::min(frameMax, frame + 1);
+                renderer->setVertices(loadVerticesFromBin(framePaths[frame].generic_string()));
+            }
+            if(ImGui::Button(ICON_FA_FORWARD_FAST, iconSize)) {
+                frame = frameMax;
+                renderer->setVertices(loadVerticesFromBin(framePaths[frame].generic_string()));
+            }
+        }
+      
+        ImGui::EndMainMenuBar();
+    
         glm::vec3 cameraPos = camera.getCameraPosition();
         // ImGui::ShowDemoWindow();
         ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
@@ -100,13 +159,29 @@ void Application::run() {
         ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
         ImGui::Text("Camera Position: %.2f, %.2f, %.2f", cameraPos.x, cameraPos.y, cameraPos.z);
         ImGui::Text("Mode: %s", uiMode ? "UI Mode (Tab to Camera Mode)" : "Camera Mode: (Tab to UI Mode)");
+        ImGui::End();
 
-        ImGui::End();
-    } else {
-        ImGui::Begin("Info");
-        ImGui::Text("Mode: %s", uiMode ? "UI Mode (Tab to Camera Mode)" : "Camera Mode: (Tab to UI Mode)");
-        ImGui::End();
-    }
+        if(fileLoaded) {
+                renderer->setVertices(loadVerticesFromBin(framePaths[0].generic_string()));
+                fileLoaded = false;
+            }
+
+        if(framesLoaded) {
+            vertices = loadVerticesFromBin(framePaths[frame].generic_string());
+            renderer->setVertices(vertices);
+            framesLoaded = false;
+        } else if(isPlaying && !framePaths.empty()) {
+            if(frameChangeInterval <= 0) {
+                vertices = loadVerticesFromBin(framePaths[frame++].generic_string());
+                renderer->setVertices(vertices);
+                frameChangeInterval = 1.0f / 10.0f;
+
+                if(frame > frameMax) {
+                    isPlaying = false;
+                    frame = 0;
+                }
+            } else frameChangeInterval -= deltaTime;
+        }
 
         renderer->draw(camera.getViewMatrix(), camera.getProjectionMatrix((float)screenWidth / screenHeight));
         ImGui::Render();
@@ -116,14 +191,8 @@ void Application::run() {
     }
 }
 
-bool Application::input() {
+bool Application::input(float deltaTime) {
     SDL_Event e;
-
-    ticks = SDL_GetTicks();
-    timeSeconds = ticks / 1000.0f;
-    deltaTime = timeSeconds - lastFrame;
-    lastFrame = timeSeconds;
-    
 
     const bool* keyState = SDL_GetKeyboardState(NULL);
     if(keyState[SDL_SCANCODE_ESCAPE]) {
@@ -151,15 +220,7 @@ bool Application::input() {
             }
 
             if(e.key.key == SDLK_SPACE) {
-                std::string frameStr = std::to_string(frame);
-                std::string fileStr = frameStr.insert(0, 10 - frameStr.size(), '0') + ".bin";
-                std::cout << fileStr << std::endl;
-                vertices = loadVerticesFromBin(datasetFolder + "/" + fileStr);
-                frame++;
-
-                if(frame > frameMax) frame = 0;
-
-                renderer->setVertices(vertices);
+                isPlaying = !isPlaying;
             }
         }
 
@@ -181,6 +242,8 @@ void Application::shutdown() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
+
+    renderer.reset();
 
     SDL_GL_DestroyContext(openGLContext);
     SDL_DestroyWindow(graphicsApplicationWindow);
@@ -266,4 +329,50 @@ std::vector<float> Application::loadVerticesFromBin(std::string filename) {
     }
 
     return vertices;
+}
+
+void SDLCALL Application::openFolderCallback(void* userData, const char * const *fileList, int filter) {
+    if(!fileList || !*fileList) {
+        std::cout << "Error | The dialog was closed | No folder selected." << "\n";
+        return;
+    }
+
+    std::filesystem::path datasetFolder(*fileList);
+    Application* app {static_cast<Application*>(userData)};
+
+    if(app->framePaths.size() != 0) app->framePaths.clear();
+    app->framesLoaded = false;
+
+    for(auto const& dir_entry : std::filesystem::directory_iterator(datasetFolder)) {
+        app->framePaths.push_back(dir_entry.path());
+    }
+
+    if(app->framePaths.empty()) {
+        std::cout << "No files found in the folder.\n";
+    }
+
+    app->frameMax = app->framePaths.size() - 1;
+    app->frame = 0;
+    app->framesLoaded = true;
+
+    std::cout << datasetFolder << "\n";
+    std::cout << app->framePaths.size() << "\n";
+}
+
+void SDLCALL Application::openFileCallback(void* userData, const char * const *fileList, int filter) {
+    if(!fileList || !*fileList) {
+        std::cout << "Error | The dialog was closed | No folder selected." << "\n";
+        return;
+    }
+
+    Application* app {static_cast<Application*>(userData)};
+
+    if(app->framePaths.size() != 0) app->framePaths.clear();
+
+    app->fileLoaded = false;
+    app->frame = 0;
+    app->frameMax = 0;
+    app->isPlaying = false;
+    app->framePaths.push_back(std::filesystem::path(*fileList));
+    app->fileLoaded = true;
 }

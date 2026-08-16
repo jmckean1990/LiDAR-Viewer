@@ -32,11 +32,20 @@ FetchContent_Declare(
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.92.8
+    GIT_TAG v1.92.8-docking
     GIT_SHALLOW TRUE
 )
 
-FetchContent_MakeAvailable(SDL3 glm imgui)
+# Header-only ICON_FA_* name -> codepoint mappings for Font Awesome. Also has
+# no CMakeLists.txt of its own; just needs its source dir on the include path.
+FetchContent_Declare(
+    icon_font_cpp_headers
+    GIT_REPOSITORY https://github.com/juliettef/IconFontCppHeaders.git
+    GIT_TAG main
+    GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(SDL3 glm imgui icon_font_cpp_headers)
 
 add_executable(lidar_viewer
     src/main.cpp
@@ -97,6 +106,12 @@ target_link_libraries(
         imgui
 )
 
+target_include_directories(
+    lidar_viewer
+    PRIVATE
+        ${icon_font_cpp_headers_SOURCE_DIR}
+)
+
 # Bake the MinGW runtime into the exe so it runs on machines without MSYS2
 # installed, instead of depending on libgcc/libstdc++/libwinpthread DLLs.
 if(MINGW)
@@ -113,6 +128,35 @@ if(WIN32)
             $<TARGET_FILE_DIR:lidar_viewer>
         VERBATIM
     )
+endif()
+
+# Shader sources are loaded at runtime by relative path, so keep a copy next
+# to the executable.
+add_custom_command(
+    TARGET lidar_viewer
+    POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/src/VertexShader.vert
+        ${CMAKE_SOURCE_DIR}/src/FragmentShader.frag
+        $<TARGET_FILE_DIR:lidar_viewer>
+    VERBATIM
+)
+
+# Font Awesome icon font: not fetched automatically (no stable single-file
+# URL to pin), so this only activates once you've dropped the .ttf in
+# yourself. See https://fontawesome.com/download for the free desktop package.
+set(FONT_AWESOME_TTF ${CMAKE_SOURCE_DIR}/src/fonts/fa-solid-900.ttf)
+if(EXISTS ${FONT_AWESOME_TTF})
+    add_custom_command(
+        TARGET lidar_viewer
+        POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            ${FONT_AWESOME_TTF}
+            $<TARGET_FILE_DIR:lidar_viewer>
+        VERBATIM
+    )
+else()
+    message(STATUS "Font Awesome font not found at ${FONT_AWESOME_TTF} — skipping icon font copy")
 endif()
 
 # Test data: Stanford Bunny range scans + reconstructed mesh, downloaded on
