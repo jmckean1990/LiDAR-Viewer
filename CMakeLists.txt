@@ -53,6 +53,9 @@ add_executable(lidar_viewer
     src/FlyCamera.cpp
     src/Shader.cpp
     src/Renderer.cpp
+    src/Dataset.cpp
+    src/DataLoader.cpp
+    src/PlaybackManager.cpp
 )
 
 add_library (
