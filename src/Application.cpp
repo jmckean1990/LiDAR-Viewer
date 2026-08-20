@@ -102,12 +102,13 @@ bool Application::init() {
 void Application::run() {    
     float lastFrame {0.0f};
     ImVec2 iconSize(24, 24);
-    float frameChangeInterval = 1.0f / formatInfo(currentFormat).frameInterval;   // KITTI frames taken at 10Hz
+    float frameChangeInterval = 1.0f / dataset.formatInfo().frameInterval;   // KITTI frames taken at 10Hz
+    static DatasetFormat currentFormat = DatasetFormat::KITTI;
 
     while(!running) {
         Uint64 ticks {SDL_GetTicks()};
         float timeSeconds {ticks / 1000.0f};
-        float deltaTime = {timeSeconds - lastFrame};
+        float deltaTime {timeSeconds - lastFrame};
 
         lastFrame = timeSeconds;
 
@@ -122,20 +123,22 @@ void Application::run() {
         ImGui::BeginMainMenuBar();
         if(ImGui::Button(ICON_FA_FILE " Open File", iconSize)) {
             std::cout << "Open file pressed" << "\n";
-            SDL_ShowOpenFileDialog(openFileCallback, this, graphicsApplicationWindow, NULL, 0, NULL, false);
+            void* uData[] {this, &dataset, &currentFormat};
+            SDL_ShowOpenFileDialog(openFileCallback, uData, graphicsApplicationWindow, NULL, 0, NULL, false);
         }
         if(ImGui::Button(ICON_FA_FOLDER_OPEN " Open Folder", iconSize)) {
             isPlaying = false;
-            SDL_ShowOpenFolderDialog(openFolderCallback, this, graphicsApplicationWindow, NULL, false);
+            void* uData[] {this, &dataset, &currentFormat};
+            SDL_ShowOpenFolderDialog(openFolderCallback, uData, graphicsApplicationWindow, NULL, false);
         }
         static const char* formatNames[] = { "KITTI", "nuScenes" };
         int formatIndex = static_cast<int>(currentFormat);
         ImGui::SetNextItemWidth(120.0f);
         if(ImGui::Combo("##DatasetFormat", &formatIndex, formatNames, IM_ARRAYSIZE(formatNames))) {
             currentFormat = static_cast<DatasetFormat>(formatIndex);
-}
+        }
 
-        if(!framePaths.empty() && framePaths.size() > 1){
+        if(dataset.frameCount() > 1){
             if(ImGui::Button(ICON_FA_BACKWARD_FAST, iconSize)) {
                 frame = 0;
                 loadFrame(frame);
@@ -175,11 +178,11 @@ void Application::run() {
         if(framesLoaded) {
             loadFrame(frame);
             framesLoaded = false;
-        } else if(isPlaying && !framePaths.empty()) {
+        } else if(isPlaying && dataset.frameCount() > 1) {
             if(frameChangeInterval <= 0) {
                 loadFrame(frame);
                 frame++;
-                frameChangeInterval = 1.0f / formatInfo(currentFormat).frameInterval;
+                frameChangeInterval = 1.0f / dataset.formatInfo().frameInterval;
 
                 if(frame > frameMax) {
                     isPlaying = false;
@@ -228,7 +231,7 @@ bool Application::input(float deltaTime) {
                 isPlaying = !isPlaying;
             }
 
-            if(!isPlaying & framePaths.size() > 1) {
+            if(!isPlaying & dataset.frameCount() > 1) {
                 if(e.key.key == SDLK_LEFT) {
                     frame = std::max(0, frame - 1);
                     loadFrame(frame);
@@ -354,27 +357,21 @@ void SDLCALL Application::openFolderCallback(void* userData, const char * const 
     }
 
     std::filesystem::path datasetFolder(*fileList);
-    Application* app {static_cast<Application*>(userData)};
+    void** data {static_cast<void**>(userData)};
+    Application* app {static_cast<Application*>(data[0])};
+    Dataset* dSet {static_cast<Dataset*>(data[1])};
+    DatasetFormat format {*static_cast<DatasetFormat*>(data[2])};
 
-    if(app->framePaths.size() != 0) app->framePaths.clear();
     app->framesLoaded = false;
 
-    for(auto const& dir_entry : std::filesystem::directory_iterator(datasetFolder)) {
-        app->framePaths.push_back(dir_entry.path());
-    }
-    
-    std::sort(app->framePaths.begin(), app->framePaths.end());
+    dSet->openFolder(std::filesystem::path(*fileList), format);
 
-    if(app->framePaths.empty()) {
-        std::cout << "No files found in the folder.\n";
-    }
-
-    app->frameMax = app->framePaths.size() - 1;
+    app->frameMax = dSet->frameCount();
     app->frame = 0;
     app->framesLoaded = true;
 
     std::cout << datasetFolder << "\n";
-    std::cout << app->framePaths.size() << "\n";
+    std::cout << dSet->frameCount() << "\n";
 }
 
 void SDLCALL Application::openFileCallback(void* userData, const char * const *fileList, int filter) {
@@ -383,30 +380,22 @@ void SDLCALL Application::openFileCallback(void* userData, const char * const *f
         return;
     }
 
-    Application* app {static_cast<Application*>(userData)};
+    void** data {static_cast<void**>(userData)};
+    Application* app {static_cast<Application*>(data[0])};
+    Dataset* dSet {static_cast<Dataset*>(data[1])};
+    DatasetFormat format {*static_cast<DatasetFormat*>(data[2])};
 
-    if(app->framePaths.size() != 0) app->framePaths.clear();
+    dSet->openFile(std::filesystem::path(*fileList), format);
 
     app->fileLoaded = false;
     app->frame = 0;
-    app->frameMax = 0;
+    app->frameMax = dSet->frameCount();
     app->isPlaying = false;
-    app->framePaths.push_back(std::filesystem::path(*fileList));
     app->fileLoaded = true;
 }
 
 void Application::loadFrame(int frame) {
-    FormatInfo info = formatInfo(currentFormat);
-    vertices = loadVerticesFromBin(framePaths[frame].generic_string(), info.stride, info.groundOffset);
+    FormatInfo info = dataset.formatInfo();
+    vertices = loadVerticesFromBin(dataset.framePath(frame).generic_string(), info.stride, info.groundOffset);
     renderer->setVertices(vertices);
-}
-
-FormatInfo Application::formatInfo(DatasetFormat fmt) const {
-    switch(fmt) {
-        case DatasetFormat::KITTI : return {4, 1.73f, 10.0f};
-        case DatasetFormat::NUSCENES : return {5, 1.84f, 20.0f};
-    }
-
-    // default
-    return {4, 1.73f, 10.0f};
 }

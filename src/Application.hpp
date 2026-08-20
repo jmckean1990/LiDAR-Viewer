@@ -2,26 +2,19 @@
 
 #include "FlyCamera.hpp"
 #include "Renderer.hpp"
+#include "Dataset.hpp"
 
 #include <SDL3/SDL.h>
 
 #include <optional>
 #include <filesystem>
 
-enum class DatasetFormat {KITTI, NUSCENES};
-
-struct FormatInfo {
-    int stride;
-    float groundOffset;
-    float frameInterval;
-};
 
 class Application {
 public:
     std::vector<float> vertices;  
-    std::vector<std::filesystem::path> framePaths;
 
-    int frame = 0, frameMax = 153;
+    int frame = 0, frameMax = 0;
 
     Application();
     ~Application() {shutdown();}    
@@ -42,8 +35,7 @@ private:
     
     FlyCamera camera;
     std::optional <Renderer> renderer;
-
-    DatasetFormat currentFormat = DatasetFormat::KITTI;
+    Dataset dataset;
 
     bool init();
     bool input(float deltaTime);
@@ -53,6 +45,5 @@ private:
     std::vector<float> loadVerticesFromBin(std::string filename, int stride, float groundOffset);
     static void SDLCALL openFolderCallback(void* userData, const char * const *fileList, int filter);
     static void SDLCALL openFileCallback(void* userData, const char * const *fileList, int filter);
-    FormatInfo formatInfo(DatasetFormat fmt) const;
 };
 
